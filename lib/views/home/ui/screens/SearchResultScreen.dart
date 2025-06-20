@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/helpers/ipconfig.dart';
 import '../../../../core/helpers/searchKnowledgeBase.dart';
+import '../../../../core/theming/my_colors.dart';  // استيراد ألوان المشروع
 
 class AskQuestionPage extends StatefulWidget {
   const AskQuestionPage({Key? key}) : super(key: key);
@@ -50,7 +51,6 @@ class _AskQuestionPageState extends State<AskQuestionPage> {
             .map<String>((item) => item["transcription"] as String? ?? "")
             .where((text) => text.isNotEmpty)
             .toList();
-
       } else {
         errorLoadingTranscriptions = "Failed to load transcriptions: ${response.statusCode}";
       }
@@ -107,40 +107,72 @@ class _AskQuestionPageState extends State<AskQuestionPage> {
   Widget build(BuildContext context) {
     if (isLoadingTranscriptions) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        backgroundColor: MyColors.backgroundColor,
+        body: Center(child: CircularProgressIndicator(color: MyColors.button1Color)),
       );
     }
 
     if (errorLoadingTranscriptions != null) {
       return Scaffold(
-        body: Center(child: Text(errorLoadingTranscriptions!)),
+        backgroundColor: MyColors.backgroundColor,
+        body: Center(
+          child: Text(
+            errorLoadingTranscriptions!,
+            style: TextStyle(color: MyColors.button1Color),
+          ),
+        ),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Ask a Question")),
+      backgroundColor: MyColors.backgroundColor,
+      appBar: AppBar(
+        leading: IconButton(
+          icon: Image.asset("assets/images/arrow.png", width: 35, height: 35),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text("Ask a Question", style: TextStyle(color: Colors.white)),
+        backgroundColor: MyColors.backgroundColor,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
+            const SizedBox(height: 20),
             TextField(
               controller: _controller,
-              decoration: const InputDecoration(
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
                 labelText: "Your Question",
-                border: OutlineInputBorder(),
+                labelStyle: const TextStyle(color: Colors.white70),
+                border: const OutlineInputBorder(),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: MyColors.button1Color),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: MyColors.button2Color, width: 2),
+                ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: MyColors.button1Color,
+                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+              ),
               onPressed: _loading ? null : _sendQuestion,
               child: _loading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text("Ask"),
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              )
+                  : const Text("search", style: TextStyle(color: Colors.white)),
             ),
             const SizedBox(height: 20),
 
             if (_error != null) ...[
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              Text(_error!, style: TextStyle(color: MyColors.button1Color)),
             ] else if (_results != null) ...[
               ListView.builder(
                 shrinkWrap: true,
@@ -148,28 +180,63 @@ class _AskQuestionPageState extends State<AskQuestionPage> {
                 itemCount: _results!.length,
                 itemBuilder: (context, index) {
                   final item = _results![index];
+                  final relatedParagraphs = (item["related_paragraphs"] ?? "").split('\n\n');
+
                   return Card(
-                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 6,  // ظل أكبر للكارد
+                    shadowColor: Colors.black.withOpacity(0.5),
+                    color: MyColors.backgroundColor,
                     child: Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            "Answer ${index + 1}:",
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16),
+                          // صندوق الإجابة مع ظل
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: MyColors.backgroundColor,
+                              borderRadius: BorderRadius.circular(10),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.white.withOpacity(0.5),
+                                  spreadRadius: 1,
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              item["answer"] ?? "No answer.",
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(item["answer"] ?? "No answer."),
-                          const SizedBox(height: 10),
+
+                          const SizedBox(height: 16),
+
                           Text(
-                            "Related Text:",
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 14),
+                            "Related Paragraphs:",
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 14, color: MyColors.button1Color),
                           ),
-                          const SizedBox(height: 4),
-                          Text(item["related_paragraphs"] ?? ""),
+
+                          const SizedBox(height: 8),
+
+                          // عرض كل فقرة متعلقة في كارد مستقل
+                          ...relatedParagraphs.map((paragraph) => Card(
+                            margin: const EdgeInsets.symmetric(vertical: 6),
+                            color: MyColors.backgroundColor,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(
+                                paragraph.trim(),
+                                style: const TextStyle(fontSize: 14, color: Colors.white),
+                              ),
+                            ),
+                          )),
                         ],
                       ),
                     ),

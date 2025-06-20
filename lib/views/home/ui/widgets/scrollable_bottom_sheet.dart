@@ -16,6 +16,7 @@ class CustomDraggableScrollableSheet extends StatefulWidget {
   final String transcriptionText;
   final VoidCallback onSummarize;
   final VoidCallback onDetectTopics;
+  final VoidCallback? onDelete;  // إضافة دالة الحذف
   final String? summaryText;
   final List<String>? tasks;
   final List<String>? topics;
@@ -25,6 +26,7 @@ class CustomDraggableScrollableSheet extends StatefulWidget {
     required this.transcriptionText,
     required this.onSummarize,
     required this.onDetectTopics,
+    this.onDelete,
     this.summaryText,
     this.tasks,
     this.topics,
@@ -141,7 +143,6 @@ class _CustomDraggableScrollableSheetState
     );
   }
 
-  /// ✅ تقسيم النص حسب عدد الأسطر
   List<String> splitTextByWords(String text, int maxWordsPerChunk) {
     List<String> words = text.split(' ');
     List<String> chunks = [];
@@ -155,16 +156,17 @@ class _CustomDraggableScrollableSheetState
 
     return chunks;
   }
+
   void createImageFromText(BuildContext context, double width, double height) async {
     final controller = ScreenshotController();
-    const int maxWordsPerImage = 50; // عدد الكلمات في كل صورة
+    const int maxWordsPerImage = 50;
 
     final chunks = splitTextByWords(widget.transcriptionText, maxWordsPerImage);
     final tempDir = await getTemporaryDirectory();
     List<XFile> imageFiles = [];
 
     for (int i = 0; i < chunks.length; i++) {
-      final chunkText = chunks[i]; // الجزء الحالي من النص
+      final chunkText = chunks[i];
 
       final imageWidget = Screenshot(
         controller: controller,
@@ -227,7 +229,6 @@ class _CustomDraggableScrollableSheetState
     final String toEmail = _toEmailController.text.trim();
     final String message = widget.transcriptionText.trim();
 
-    // فحص بريد المرسل
     final emailRegex = RegExp(
         r"^[a-zA-Z0-9.a-zA-Z0-9!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+");
     if (fromEmail.isEmpty || !emailRegex.hasMatch(fromEmail)) {
@@ -236,7 +237,6 @@ class _CustomDraggableScrollableSheetState
       );
       return;
     }
-    // فحص بريد المستلم
     if (toEmail.isEmpty || !emailRegex.hasMatch(toEmail)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a valid recipient email address.')),
@@ -289,7 +289,6 @@ class _CustomDraggableScrollableSheetState
               child: ListView(
                 controller: controller,
                 children: [
-                  // المقبض الصغير
                   Center(
                     child: Container(
                       width: 40,
@@ -324,15 +323,68 @@ class _CustomDraggableScrollableSheetState
                           );
                         },
                       ),
+                      // IconButton(
+                      //   icon: const Icon(Icons.delete, color: Colors.white),
+                      //   onPressed: widget.onDelete != null
+                      //       ? () {
+                      //     showDialog(
+                      //       context: context,
+                      //       builder: (context) => AlertDialog(
+                      //         backgroundColor: MyColors.backgroundColor,
+                      //         title: const Text("Confirm Delete", style: TextStyle(color: Colors.white)),
+                      //         content: const Text(
+                      //             "Are you sure you want to delete this transcription?",
+                      //             style: TextStyle(color: Colors.white70)),
+                      //         actions: [
+                      //           TextButton(
+                      //             child: const Text("Cancel", style: TextStyle(color: Colors.white)),
+                      //             onPressed: () => Navigator.of(context).pop(),
+                      //           ),
+                      //           TextButton(
+                      //             child: const Text("Delete", style: TextStyle(color: Colors.redAccent)),
+                      //             onPressed: () {
+                      //               Navigator.of(context).pop();
+                      //               widget.onDelete!();
+                      //             },
+                      //           ),
+                      //         ],
+                      //       ),
+                      //     );
+                      //   }
+                      //       : null,
+                      // ),
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.white),
-                        onPressed: () {
-                          // لا يمكنك تعديل النص هنا لأنه غير قابل للتغيير في هذا الويدجت
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Delete action is not implemented.")),
+                        onPressed: widget.onDelete != null
+                            ? () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              backgroundColor: MyColors.backgroundColor,
+                              title: const Text("Confirm Delete", style: TextStyle(color: Colors.white)),
+                              content: const Text(
+                                  "Are you sure you want to delete this transcription?",
+                                  style: TextStyle(color: Colors.white70)),
+                              actions: [
+                                TextButton(
+                                  child: const Text("Cancel", style: TextStyle(color: Colors.white)),
+                                  onPressed: () => Navigator.of(context).pop(),
+                                ),
+                                TextButton(
+                                  child: const Text("Delete", style: TextStyle(color: Colors.redAccent)),
+                                  onPressed: () {
+                                    Navigator.of(context).pop(); // تغلق الـ AlertDialog
+                                    widget.onDelete!();         // تنفذ الحذف
+                                    Navigator.of(context).pop(); // ترجع الصفحة السابقة
+                                  },
+                                ),
+                              ],
+                            ),
                           );
-                        },
+                        }
+                            : null,
                       ),
+
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -604,49 +656,28 @@ class _CustomDraggableScrollableSheetState
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          ElevatedButton(
+                          TextButton(
                             onPressed: _toggleEmailForm,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
                             child: const Text(
                               'Cancel',
-                              style:
-                              TextStyle(fontSize: 16, color: Colors.white),
+                              style: TextStyle(color: Colors.white),
                             ),
                           ),
                           ElevatedButton(
                             onPressed: _isSending ? null : _sendEmail,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
                             child: _isSending
                                 ? const SizedBox(
-                              width: 20,
-                              height: 20,
+                              width: 18,
+                              height: 18,
                               child: CircularProgressIndicator(
                                 color: Colors.white,
                                 strokeWidth: 2,
                               ),
                             )
-                                : const Text(
-                              'Send',
-                              style: TextStyle(
-                                  fontSize: 16, color: Colors.white),
-                            ),
+                                : const Text('Send'),
                           ),
                         ],
-                      )
+                      ),
                     ],
                   ),
                 ),

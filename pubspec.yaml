@@ -59,6 +59,7 @@ dependencies:
   url_launcher: ^6.2.6
   webview_flutter: ^4.2.2
   webview_flutter_android: ^3.10.2
+  flutter_slidable: ^4.0.0
 
 dev_dependencies:
   flutter_test:

@@ -1,42 +1,140 @@
+import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:intl/intl.dart';
+
 import 'package:gradprj/core/helpers/app_bar.dart';
+import 'package:gradprj/core/helpers/ipconfig.dart';
 import 'package:gradprj/core/helpers/spacing.dart';
 import 'package:gradprj/core/theming/my_colors.dart';
 import 'package:gradprj/core/theming/my_fonts.dart';
 import 'package:gradprj/views/home/ui/widgets/custom_gustor_detector.dart';
 import 'package:gradprj/views/home/ui/widgets/scrollable_bottom_sheet.dart';
-import 'package:intl/intl.dart';
-import 'package:dio/dio.dart';
-import 'package:http_parser/http_parser.dart';
 
-import '../../../../core/helpers/fetchTranscriptionTitle(.dart';
+import '../../../../core/helpers/showBlockingLoade.dart';
 
-class NotePage extends StatefulWidget {
+class note_screen extends StatefulWidget {
+  final DateTime? uploadDate;
+  final String fullTranscription;
 
-   NotePage({super.key, });
+  note_screen({Key? key, this.uploadDate, required this.fullTranscription}) : super(key: key);
 
   @override
-  _NotePageState createState() => _NotePageState();
+  _note_screenState createState() => _note_screenState();
 }
 
-class _NotePageState extends State<NotePage> {
+class _note_screenState extends State<note_screen> {
   String title = "Loading...";
+  String? transcription;
+  String? enhancedText;
+  String? summaryText;
+  List<String> detectedTopics = [];
+  List<String> extractedTasks = [];
+
+  bool isEnhancing = false;
+  bool isSummarizing = false;
+  bool isLoadingTopics = false;
+  bool isLoadingTasks = false;
+
   String? enhanceError;
-  bool isEnhancing = false; bool showEnhancedPage = false;  String? enhancedText;  final String ipconfig = "192.168.1.102";
+  String? summaryError;
+  String? topicsError;
+  String? tasksError;
 
   String formattedDate = DateFormat('MMM d, y').format(DateTime.now());
-  bool _isLoadingTranscript = false;
 
   @override
-  Future<void> fetchEnhancedText() async {
+  @override
+  void initState() {
+    super.initState();
+    _loadTitle();
+    fetchEnhancedTextFor(widget.fullTranscription);
+  }
+  Future<void> fetchTasks() async {
+    final text = enhancedText ?? widget.fullTranscription;
+    if (text.isEmpty) return;
+
+    setState(() {
+      isLoadingTasks = true;
+      tasksError = null;
+    });
+
+    try {
+      final response = await Dio().post(
+        'http://$ipAddress:8000/extract_tasks_from_text/',
+        data: {"text": text},
+      );
+
+      if (response.statusCode == 200 && response.data['tasks'] != null) {
+        setState(() {
+          extractedTasks = List<String>.from(response.data['tasks']);
+        });
+      } else {
+        setState(() {
+          tasksError = "Failed to extract tasks.";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        tasksError = "Tasks Error: $e";
+      });
+    } finally {
+      setState(() {
+        isLoadingTasks = false;
+      });
+    }
+  }
+
+  Future<void> fetchTopics() async {
+    final text = enhancedText ?? widget.fullTranscription;
+    if (text.isEmpty) return;
+
+    setState(() {
+      isLoadingTopics = true;
+      topicsError = null;
+    });
+
+    try {
+      final response = await Dio().post(
+        'http://$ipAddress:8000/detect_topics/',
+        data: {"text": text},
+      );
+
+      if (response.statusCode == 200 && response.data['topics'] != null) {
+        setState(() {
+          detectedTopics = List<String>.from(response.data['topics']);
+        });
+      } else {
+        setState(() {
+          topicsError = "Failed to detect topics.";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        topicsError = "Topics Error: $e";
+      });
+    } finally {
+      setState(() {
+        isLoadingTopics = false;
+      });
+    }
+  }
+  Future<void> fetchEnhancedTextFor(String text) async {
     setState(() {
       isEnhancing = true;
       enhanceError = null;
     });
 
     try {
-      final response = await Dio().get('http://$ipconfig:8000/enhance/');
+      final response = await Dio().post(
+        'http://$ipAddress:8000/enhance_text/',
+        data: {"text": text},
+      );
+
       if (response.statusCode == 200) {
         setState(() => enhancedText = response.data['enhanced_text']);
       } else {
@@ -48,18 +146,39 @@ class _NotePageState extends State<NotePage> {
       setState(() => isEnhancing = false);
     }
   }
+  Future<void> fetchSummary() async {
+    final text = enhancedText ?? widget.fullTranscription;
+    if (text.isEmpty) return;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadTitle();
-    fetchEnhancedText();
-    fetchEnhancedText();
+    showBlockingLoader(context);
+    try {
+      final response = await Dio().post(
+        'http://$ipAddress:8000/summarize/',
+        data: {"text": text},
+      );
+      if (response.statusCode == 200) {
+        setState(() => summaryText = response.data['summary']);
+      } else {
+        summaryError = "Failed to summarize.";
+      }
+    } catch (e) {
+      summaryError = "Summary Error: $e";
+    } finally {
+      hideBlockingLoader(context);
+    }
   }
 
+
   Future<void> _loadTitle() async {
-    final fetchedTitle = await fetchTranscriptionTitle();
-    if (fetchedTitle != null) {
+    if (widget.fullTranscription.isEmpty) {
+      setState(() {
+        title = "No transcription text provided";
+      });
+      return;
+    }
+
+    final fetchedTitle = await fetchTitleFromText(widget.fullTranscription);
+    if (fetchedTitle != null && fetchedTitle.trim().isNotEmpty) {
       setState(() {
         title = fetchedTitle;
       });
@@ -69,58 +188,125 @@ class _NotePageState extends State<NotePage> {
       });
     }
   }
-  void _editText(String field) {
-    TextEditingController controller = TextEditingController(
-      text: field == 'title' ? title :enhancedText,
-    );
 
-    showDialogEdite(field, controller);
+  Future<String?> fetchTitleFromText(String text) async {
+    final url = Uri.parse('http://$ipAddress:8000/extract_title_from_text/');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({"text": text}),
+      );
+
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        return jsonData['title'];
+      } else {
+        print('Server error: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('Failed to fetch title: $e');
+      return null;
+    }
+  }
+  Future<void> fetchEnhancedText() async {
+    if (widget.fullTranscription.isEmpty) return;
+
+    setState(() {
+      isEnhancing = true;
+      enhanceError = null;
+    });
+
+    try {
+      final url = Uri.parse('http://$ipAddress:8000/enhance_text/');
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({"text": widget.fullTranscription}),
+      );
+
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        setState(() => enhancedText = jsonData['enhanced_text']);
+      } else {
+        setState(() => enhanceError = "Failed to enhance text.");
+      }
+    } catch (e) {
+      setState(() => enhanceError = "Enhance Error: $e");
+    } finally {
+      setState(() => isEnhancing = false);
+    }
   }
 
-  Future<dynamic> showDialogEdite(
-      String field, TextEditingController controller) {
+
+  void _editText(String field) {
+    TextEditingController controller = TextEditingController(
+      text: field == 'title' ? title : enhancedText,
+    );
+
+    showDialogEdit(field, controller);
+  }
+
+  Future<dynamic> showDialogEdit(String field, TextEditingController controller) {
     return showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (_) => Dialog(
         backgroundColor: MyColors.backgroundColor,
-        title: Text(
-          "Edit ${field == 'title' ? 'Title' : 'Content'}",
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: TextField(
-          controller: controller,
-          maxLines: field == 'title' ? 2 : 5,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: field == 'title' ? 'Enter title' : 'Enter content',
-            hintStyle: const TextStyle(color: Colors.white54),
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() {
-                if (field == 'title') {
-                  title = controller.text;
-                } else {
-                  enhancedText= controller.text;
-                }
-              });
-              Navigator.pop(context);
-            },
-            child: Text(
-              "Save",
-              style: TextStyle(color: MyColors.button1Color),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "Edit ${field == 'title' ? 'Title' : 'Content'}",
+                  style: const TextStyle(color: Colors.white),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: controller,
+                  maxLines: field == 'title' ? 2 : 5,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: field == 'title' ? 'Enter title' : 'Enter content',
+                    hintStyle: const TextStyle(color: Colors.white54),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      if (field == 'title') {
+                        title = controller.text;
+                      } else {
+                        enhancedText = controller.text;
+                      }
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: Text(
+                    "Save",
+                    style: TextStyle(color: MyColors.button1Color),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
   void _editBoth() {
     TextEditingController titleController = TextEditingController(text: title);
-    TextEditingController contentController = TextEditingController(text:enhancedText);
+    TextEditingController contentController = TextEditingController(text: enhancedText);
 
     showDialog(
       context: context,
@@ -178,7 +364,7 @@ class _NotePageState extends State<NotePage> {
         children: [
           Padding(
             padding: const EdgeInsets.all(24.0),
-            child:SingleChildScrollView(
+            child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -188,7 +374,9 @@ class _NotePageState extends State<NotePage> {
                   ),
                   Center(
                     child: Text(
-                      formattedDate,
+                      widget.uploadDate != null
+                          ? DateFormat('MMM d, y – hh:mm a').format(widget.uploadDate!)
+                          : "No upload date",
                       style: MyFontStyle.font12RegularBtn.copyWith(color: MyColors.whiteColor),
                     ),
                   ),
@@ -204,49 +392,29 @@ class _NotePageState extends State<NotePage> {
                     color: MyColors.button2Color,
                   ),
                   verticalSpace(10),
-                  _isLoadingTranscript
-                      ? const Center(
-                    child: CircularProgressIndicator(
-                      color: MyColors.button1Color,
-                    ),
-                  )
-                      :SingleChildScrollView(
-                                                 child: GestureDetector(
-                                                   onTap: () => _editText('content'),
-                                                   child: Container(
-                                                     padding: const EdgeInsets.all(16),
-                                                     margin: const EdgeInsets.symmetric(
-                                                         horizontal: 8, vertical: 8),
-                                                     decoration: BoxDecoration(
-                                                       color: MyColors.backgroundColor,
-                                                       border: Border.all(color: Colors.grey.shade300),
-                                                       borderRadius: BorderRadius.circular(12),
-                                                       boxShadow: [
-                                                         BoxShadow(
-                                                           color: Colors.grey.shade300,
-                                                           blurRadius: 6,
-                                                           offset: const Offset(0, 3),
-                                                         ),
-                                                       ],
-                                                     ),
-                                                     child: Text(
-                                                       enhancedText??"no",
-                                                       style: const TextStyle(
-                                                           fontSize: 16, color: Colors.white),
-                                                     ),
-                                                   ),
-                                                 ),
-                                               ),
-
-
+                  Text(
+                    widget.fullTranscription.isNotEmpty ? widget.fullTranscription : "No transcription available",
+                    style: const TextStyle(fontSize: 16, color: Colors.white),
+                  ),
                   SizedBox(height: MediaQuery.of(context).size.height * 0.111),
                 ],
               ),
             ),
           ),
           CustomDraggableScrollableSheet(
-            transcriptionText: enhancedText??"no",
-          ),        ],
+            transcriptionText: widget.fullTranscription,
+            onSummarize: fetchSummary,
+            onDetectTopics: fetchTopics,
+            summaryText: summaryText,
+            tasks: extractedTasks, // ← Add this
+            topics: detectedTopics,
+
+// ← Add this too
+          )
+
+
+
+        ],
       ),
     );
   }

@@ -1,19 +1,34 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:gradprj/core/helpers/spacing.dart';
 import 'package:gradprj/core/theming/my_colors.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../screens/emailService.dart';
+
 class CustomDraggableScrollableSheet extends StatefulWidget {
   final String transcriptionText;
+  final VoidCallback onSummarize;
+  final VoidCallback onDetectTopics;
+  final String? summaryText;
+  final List<String>? tasks;
+  final List<String>? topics;
 
-  const CustomDraggableScrollableSheet(
-      {Key? key, required this.transcriptionText})
-      : super(key: key);
+  const CustomDraggableScrollableSheet({
+    Key? key,
+    required this.transcriptionText,
+    required this.onSummarize,
+    required this.onDetectTopics,
+    this.summaryText,
+    this.tasks,
+    this.topics,
+  }) : super(key: key);
 
   @override
   State<CustomDraggableScrollableSheet> createState() =>
@@ -23,17 +38,32 @@ class CustomDraggableScrollableSheet extends StatefulWidget {
 class _CustomDraggableScrollableSheetState
     extends State<CustomDraggableScrollableSheet> {
   bool _isEmailFormVisible = false;
-  final GlobalKey screenshotKey = GlobalKey();
+  final ScreenshotController screenshotController = ScreenshotController();
 
   final TextEditingController _fromEmailController = TextEditingController();
   final TextEditingController _toEmailController = TextEditingController();
 
   bool _isSending = false;
+
   @override
   void dispose() {
     _fromEmailController.dispose();
     _toEmailController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserEmail();
+  }
+
+  Future<void> _loadUserEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userEmail = prefs.getString('userEmail') ?? '';
+    setState(() {
+      _fromEmailController.text = userEmail;
+    });
   }
 
   void _toggleEmailForm() {
@@ -75,9 +105,6 @@ class _CustomDraggableScrollableSheetState
                   _sizeOption(context, 400, 500, "Large", 100, 150),
                 ],
               ),
-              // const SizedBox(height: 20),
-              // const Text("Great for LinkedIn posts.",
-              //     style: TextStyle(color: Colors.white70)),
             ],
           ),
         );
@@ -114,43 +141,85 @@ class _CustomDraggableScrollableSheetState
     );
   }
 
-  void createImageFromText(
-      BuildContext context, double width, double height) async {
-    final controller = ScreenshotController();
+  /// ✅ تقسيم النص حسب عدد الأسطر
+  List<String> splitTextByWords(String text, int maxWordsPerChunk) {
+    List<String> words = text.split(' ');
+    List<String> chunks = [];
 
-    final imageWidget = Screenshot(
-      controller: controller,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(15),
-          color: const Color(0xFF2E3244),
-        ),
-        width: width,
-        height: height,
-        alignment: Alignment.center,
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Text(
-            widget.transcriptionText,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 18),
-            softWrap: true,
+    for (int i = 0; i < words.length; i += maxWordsPerChunk) {
+      int end = (i + maxWordsPerChunk < words.length)
+          ? i + maxWordsPerChunk
+          : words.length;
+      chunks.add(words.sublist(i, end).join(' '));
+    }
+
+    return chunks;
+  }
+  void createImageFromText(BuildContext context, double width, double height) async {
+    final controller = ScreenshotController();
+    const int maxWordsPerImage = 50; // عدد الكلمات في كل صورة
+
+    final chunks = splitTextByWords(widget.transcriptionText, maxWordsPerImage);
+    final tempDir = await getTemporaryDirectory();
+    List<XFile> imageFiles = [];
+
+    for (int i = 0; i < chunks.length; i++) {
+      final chunkText = chunks[i]; // الجزء الحالي من النص
+
+      final imageWidget = Screenshot(
+        controller: controller,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(15),
+            color: const Color(0xFF2E3244),
+          ),
+          width: width,
+          height: height,
+          child: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Text(
+                      chunkText,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 18),
+                      softWrap: true,
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Text(
+                  ' ${i + 1}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ),
+            ],
           ),
         ),
-      ),
-    );
+      );
 
-    final imageBytes = await controller.captureFromWidget(imageWidget);
+      try {
+        final imageBytes = await controller.captureFromWidget(imageWidget);
+        final imagePath = '${tempDir.path}/transcription_$i.png';
+        final imageFile = File(imagePath);
+        await imageFile.writeAsBytes(imageBytes);
+        imageFiles.add(XFile(imagePath));
+      } catch (e) {
+        print('Error capturing image for chunk $i: $e');
+      }
+    }
 
-    final directory = await getTemporaryDirectory();
-    final imagePath = '${directory.path}/transcription_image.png';
-    final imageFile = File(imagePath);
-    await imageFile.writeAsBytes(imageBytes);
-
-    Share.shareXFiles(
-      [XFile(imagePath)],
-      //text: 'Here’s the transcription image!'
-    );
+    if (imageFiles.isNotEmpty) {
+      await Share.shareXFiles(imageFiles, text: 'Transcription Images');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No images generated')),
+      );
+    }
   }
 
   Future<void> _sendEmail() async {
@@ -158,13 +227,17 @@ class _CustomDraggableScrollableSheetState
     final String toEmail = _toEmailController.text.trim();
     final String message = widget.transcriptionText.trim();
 
-    if (fromEmail.isEmpty || !fromEmail.contains('@')) {
+    // فحص بريد المرسل
+    final emailRegex = RegExp(
+        r"^[a-zA-Z0-9.a-zA-Z0-9!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+");
+    if (fromEmail.isEmpty || !emailRegex.hasMatch(fromEmail)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your valid  email address.')),
+        const SnackBar(content: Text('Please enter your valid email address.')),
       );
       return;
     }
-    if (toEmail.isEmpty || !toEmail.contains('@')) {
+    // فحص بريد المستلم
+    if (toEmail.isEmpty || !emailRegex.hasMatch(toEmail)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a valid recipient email address.')),
       );
@@ -187,16 +260,13 @@ class _CustomDraggableScrollableSheetState
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email sent successfully!'
-        )),
+        const SnackBar(content: Text('Email sent successfully!')),
       );
-      _fromEmailController.clear();
       _toEmailController.clear();
       _toggleEmailForm();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to send the email. Please try again.'
-        )),
+        const SnackBar(content: Text('Failed to send the email. Please try again.')),
       );
     }
   }
@@ -205,7 +275,6 @@ class _CustomDraggableScrollableSheetState
   Widget build(BuildContext context) {
     return Stack(
       children: [
-
         DraggableScrollableSheet(
           initialChildSize: 0.12,
           minChildSize: 0.12,
@@ -232,7 +301,6 @@ class _CustomDraggableScrollableSheetState
                       ),
                     ),
                   ),
-
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -240,34 +308,33 @@ class _CustomDraggableScrollableSheetState
                         icon: const Icon(Icons.share, color: Colors.white),
                         onPressed: _toggleEmailForm,
                       ),
-
                       IconButton(
                           icon: const Icon(Icons.image, color: Colors.white),
                           onPressed: () {
                             showImageSizeSelector(context);
                           }),
-
                       IconButton(
                         icon: const Icon(Icons.copy, color: Colors.white),
-                        onPressed: () {
-                          Clipboard.setData(
+                        onPressed: () async {
+                          await Clipboard.setData(
                             ClipboardData(text: widget.transcriptionText),
                           );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Text copied!"
-                            )),
+                            const SnackBar(content: Text("Text copied!")),
                           );
                         },
                       ),
-
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.white),
                         onPressed: () {
+                          // لا يمكنك تعديل النص هنا لأنه غير قابل للتغيير في هذا الويدجت
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Delete action is not implemented.")),
+                          );
                         },
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 20),
                   const Divider(color: Colors.white24),
                   verticalSpace(20),
@@ -281,17 +348,121 @@ class _CustomDraggableScrollableSheetState
                   Row(
                     children: [
                       OutlinedButton(
-                        onPressed: () {},
-                        child: Text("view transcript" ,style: TextStyle(fontSize: 12),),
+                        onPressed: () {
+                          if (widget.transcriptionText.isNotEmpty) {
+                            showDialog(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                backgroundColor: MyColors.backgroundColor,
+                                title: const Text("Full Transcription",
+                                    style: TextStyle(color: Colors.white)),
+                                content: SingleChildScrollView(
+                                  child: Text(
+                                    widget.transcriptionText,
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () async {
+                                      await Clipboard.setData(ClipboardData(
+                                          text: widget.transcriptionText));
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(const SnackBar(
+                                          content: Text(
+                                              "Transcription copied to clipboard")));
+                                    },
+                                    child: const Text("Copy",
+                                        style: TextStyle(color: Colors.white)),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text("Close",
+                                        style: TextStyle(color: Colors.white)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("No transcription available.")),
+                            );
+                          }
+                        },
+                        child:
+                        const Text("View Transcript", style: TextStyle(fontSize: 12)),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                         ),
                       ),
-SizedBox(width: 10,),
-                      OutlinedButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(Icons.mic, color: Colors.white),
-                        label: const Text("append to note",style: TextStyle(fontSize: 12),),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: () {
+                          if (widget.tasks != null && widget.tasks!.isNotEmpty) {
+                            showDialog(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                backgroundColor: MyColors.backgroundColor,
+                                title: const Text("Tasks List",
+                                    style: TextStyle(color: Colors.white)),
+                                content: SingleChildScrollView(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: widget.tasks!
+                                        .map(
+                                          (task) => Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text("• ",
+                                                style: TextStyle(
+                                                    color: Colors.white, fontSize: 18)),
+                                            Expanded(
+                                              child: Text(
+                                                task,
+                                                style: const TextStyle(
+                                                    color: Colors.white, fontSize: 14),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                        .toList(),
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () async {
+                                      final allTasksText = widget.tasks!.join('\n');
+                                      await Clipboard.setData(
+                                          ClipboardData(text: allTasksText));
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text("Tasks copied to clipboard")),
+                                      );
+                                    },
+                                    child: const Text("Copy",
+                                        style: TextStyle(color: Colors.white)),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text("Close",
+                                        style: TextStyle(color: Colors.white)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("No tasks available.")),
+                            );
+                          }
+                        },
+                        child:
+                        const Text("View Tasks", style: TextStyle(fontSize: 12)),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                         ),
@@ -303,16 +474,50 @@ SizedBox(width: 10,),
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       OutlinedButton(
-                        onPressed: () {},
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text("Summarizing",style: TextStyle(fontSize: 12),),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(Icons.search, color: Colors.white),
-                        label: const Text("detected topics",style:TextStyle(fontSize: 12),),
+                        onPressed: () {
+                          if (widget.summaryText != null &&
+                              widget.summaryText!.isNotEmpty) {
+                            showDialog(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                backgroundColor: MyColors.backgroundColor,
+                                title: const Text("Summary",
+                                    style: TextStyle(color: Colors.white)),
+                                content: SingleChildScrollView(
+                                  child: SelectableText(
+                                    widget.summaryText!,
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () async {
+                                      await Clipboard.setData(
+                                          ClipboardData(text: widget.summaryText ?? ""));
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text("Summary copied to clipboard")),
+                                      );
+                                    },
+                                    child: const Text("Copy",
+                                        style: TextStyle(color: Colors.white)),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text("Close",
+                                        style: TextStyle(color: Colors.white)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("No summary available.")),
+                            );
+                          }
+                        },
+                        child:
+                        const Text("Show Summary", style: TextStyle(fontSize: 12)),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                         ),
@@ -325,10 +530,9 @@ SizedBox(width: 10,),
             );
           },
         ),
-
         if (_isEmailFormVisible)
           Container(
-            color: Colors.black.withOpacity(0.5), // خلفية شفافة
+            color: Colors.black.withOpacity(0.5),
             child: Center(
               child: SingleChildScrollView(
                 child: Container(
@@ -342,7 +546,6 @@ SizedBox(width: 10,),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // عنوان النموذج
                       const Text(
                         'Send Transcription via Email',
                         style: TextStyle(
@@ -352,10 +555,9 @@ SizedBox(width: 10,),
                         ),
                       ),
                       const SizedBox(height: 16),
-
-                      // حقل From Email
                       TextField(
                         controller: _fromEmailController,
+                        readOnly: true,
                         decoration: InputDecoration(
                           hintText: 'Your Email (from)',
                           hintStyle: TextStyle(color: Colors.white54),
@@ -370,8 +572,6 @@ SizedBox(width: 10,),
                         style: const TextStyle(color: Colors.white),
                       ),
                       const SizedBox(height: 12),
-
-                      // حقل To Email
                       TextField(
                         controller: _toEmailController,
                         decoration: InputDecoration(
@@ -388,7 +588,6 @@ SizedBox(width: 10,),
                         style: const TextStyle(color: Colors.white),
                       ),
                       const SizedBox(height: 12),
-
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
@@ -402,12 +601,11 @@ SizedBox(width: 10,),
                         ),
                       ),
                       const SizedBox(height: 20),
-
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           ElevatedButton(
-                            onPressed:_toggleEmailForm ,
+                            onPressed: _toggleEmailForm,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               padding: const EdgeInsets.symmetric(
@@ -416,9 +614,10 @@ SizedBox(width: 10,),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            child:  const Text(
-                              'cancel',
-                              style: TextStyle(fontSize: 16,color: Colors.white),
+                            child: const Text(
+                              'Cancel',
+                              style:
+                              TextStyle(fontSize: 16, color: Colors.white),
                             ),
                           ),
                           ElevatedButton(
@@ -433,8 +632,8 @@ SizedBox(width: 10,),
                             ),
                             child: _isSending
                                 ? const SizedBox(
-                              width: 16,
-                              height: 16,
+                              width: 20,
+                              height: 20,
                               child: CircularProgressIndicator(
                                 color: Colors.white,
                                 strokeWidth: 2,
@@ -442,11 +641,12 @@ SizedBox(width: 10,),
                             )
                                 : const Text(
                               'Send',
-                              style: TextStyle(fontSize: 16,color: Colors.white),
+                              style: TextStyle(
+                                  fontSize: 16, color: Colors.white),
                             ),
                           ),
                         ],
-                      ),
+                      )
                     ],
                   ),
                 ),

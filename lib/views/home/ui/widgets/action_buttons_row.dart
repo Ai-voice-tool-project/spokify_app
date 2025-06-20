@@ -6,6 +6,7 @@ class ActionButtonsRow extends StatelessWidget {
   final VoidCallback onFetchSummary;
   final VoidCallback onTrelloPressed;
   final VoidCallback onFetchTopics;
+  final VoidCallback? onSavePressed;  // متغير جديد اختياري
 
   const ActionButtonsRow({
     super.key,
@@ -13,8 +14,8 @@ class ActionButtonsRow extends StatelessWidget {
     required this.onFetchSummary,
     required this.onTrelloPressed,
     required this.onFetchTopics,
+    this.onSavePressed,  // أضفه هنا
   });
-
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +25,7 @@ class ActionButtonsRow extends StatelessWidget {
         children: [
           CustomRaisedGradientButton(
             width: 130,
-            onPressed:onFetchTasks,
+            onPressed: onFetchTasks,
             text: 'Extracted Tasks',
           ),
           const SizedBox(width: 16),
@@ -36,16 +37,16 @@ class ActionButtonsRow extends StatelessWidget {
           const SizedBox(width: 16),
           CustomRaisedGradientButton(
             width: 130,
-            onPressed:onTrelloPressed,
+            onPressed: onTrelloPressed,
             text: 'Add to Trello',
           ),
           const SizedBox(width: 16),
           CustomRaisedGradientButton(
             width: 130,
-            onPressed:onFetchTopics,
+            onPressed: onFetchTopics,
             text: 'Detect Topics',
           ),
-        ],
+          ],
       ),
     );
   }

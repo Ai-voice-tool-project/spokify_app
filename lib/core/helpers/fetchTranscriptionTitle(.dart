@@ -1,19 +1,37 @@
 import 'dart:convert';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-Future<String?> fetchTranscriptionTitle() async {
-  final url = Uri.parse('http://192.168.1.102:8000/extract_title/'); // ← عدلي IP هنا
+import 'ipconfig.dart';
+
+Future<String?> fetchTitleFromText(String text) async {
+  final url = Uri.parse('http://$ipAddress:8000/extract_title_from_text/');
 
   try {
-    final response = await http.get(url);
+    final response = await http
+        .post(
+      url,
+      headers: {"Content-Type": "application/json"},
+      body: json.encode({"text": text}),
+    )
+        .timeout(const Duration(seconds: 15)); // إضافة timeout
 
     if (response.statusCode == 200) {
       final jsonData = json.decode(response.body);
-      return jsonData['title']; // ← بترجع العنوان
+      final title = jsonData['title'];
+      if (title != null && title is String && title.trim().isNotEmpty) {
+        return title;
+      } else {
+        print('Warning: Title is empty or invalid.');
+        return null;
+      }
     } else {
-      print('Server Error: ${response.statusCode}');
+      // جرب تفك JSON داخل try-catch لأن الرد ممكن مش JSON
+      try {
+        final errorData = json.decode(response.body);
+        print('Server Error: ${response.statusCode} - ${errorData['detail']}');
+      } catch (_) {
+        print('Server Error: ${response.statusCode} - Non-JSON response');
+      }
       return null;
     }
   } catch (e) {
@@ -21,4 +39,3 @@ Future<String?> fetchTranscriptionTitle() async {
     return null;
   }
 }
-// ← ملف فيه fetchTranscriptionTitle()

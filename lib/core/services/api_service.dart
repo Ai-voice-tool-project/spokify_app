@@ -2,10 +2,12 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:gradprj/core/models/transicription.dart';
 import 'package:http_parser/http_parser.dart';
+
+import '../helpers/ipconfig.dart';
 class AudioService {
   final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: 'http://192.168.1.102:8000', // أو 10.0.2.2 للمحاكي
+      baseUrl: 'http://$ipAddress:8000', // أو 10.0.2.2 للمحاكي
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),
       headers: {

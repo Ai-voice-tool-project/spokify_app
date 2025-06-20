@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import '../../../../core/helpers/ipconfig.dart';
 import '../../../../core/theming/my_colors.dart';
 
 Future<String?> getTrelloToken() async {
@@ -23,16 +24,17 @@ Future<bool> addTasksToTrello({
 
     final dio = Dio();
     final response = await dio.post(
-      'http://192.168.1.102:8000/extract_and_add_tasks/',
+      'http://$ipAddress:8000/extract_and_add_tasks/',
       data: {
         "board_name": boardName,
         "list_name": listName,
-        "members": members, // استخدم القائمة الحقيقية
+        "members": members,
         "user_token": token,
       },
-      options: Options(headers: {
-        "Content-Type": "application/json",
-      }),
+      options: Options(
+        headers: {"Content-Type": "application/json"},
+        contentType: Headers.jsonContentType,
+      ),
     );
 
     return response.statusCode == 200;

@@ -1,17 +1,25 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
-Future<Map<String, dynamic>> askQuestion(String question) async {
-  final uri = Uri.parse("http://192.168.1.102:8000/ask_question/"); // غيّر الـ IP حسب السيرفر
+import 'ipconfig.dart';
+
+Future<List<Map<String, dynamic>>> askEachQuestion(String question, List<String> transcriptions) async {
+  final uri = Uri.parse("http://$ipAddress:8000/ask_each/");
+
   final response = await http.post(
     uri,
     headers: {"Content-Type": "application/json"},
-    body: jsonEncode({"question": question}),
+    body: jsonEncode({
+      "question": question,
+      "items": transcriptions, // ✅ نرسل كل الترانسكريبشنات كمصفوفة
+    }),
   );
 
   if (response.statusCode == 200) {
-    return jsonDecode(response.body);
+    final data = jsonDecode(response.body);
+    return List<Map<String, dynamic>>.from(data["results"]);
   } else {
-    throw Exception("Failed to get answer: ${response.body}");
+    throw Exception("Failed to get answers: ${response.statusCode}");
   }
 }

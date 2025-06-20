@@ -5,6 +5,8 @@ import 'package:gradprj/core/theming/my_colors.dart';
 import 'package:gradprj/core/theming/my_fonts.dart';
 import 'package:gradprj/core/widgets/button.dart';
 
+import '../../../../core/helpers/ipconfig.dart';
+
 class FullTranscriptPage extends StatefulWidget {
   final String fullText;
 
@@ -15,18 +17,16 @@ class FullTranscriptPage extends StatefulWidget {
 }
 
 class _FullTranscriptPageState extends State<FullTranscriptPage> {
-  String? summary; // لحفظ النص الملخص
-  String? enhancedText; // لحفظ النص المحسن
-  bool isLoading = false; // حالة تحميل التلخيص
-  bool isEnhancing = false; // حالة تحميل التحسين
-  final String ipconfig ="192.168.1.102";
-  // دالة تلخيص النص
+  String? summary;
+  String? enhancedText;
+  bool isLoading = false;
+  bool isEnhancing = false;
   Future<void> summarizeText() async {
     setState(() => isLoading = true);
 
     try {
       Response response = await Dio().post(
-        "http://$ipconfig:8000/summarize-text/",
+        "http://$ipAddress:8000/summarize-text/",
         data: {"text": widget.fullText},
         options: Options(headers: {"Content-Type": "application/json"}),
       );
@@ -47,7 +47,7 @@ class _FullTranscriptPageState extends State<FullTranscriptPage> {
 
     try {
       Response response = await Dio().get(
-        "http://$ipconfig/enhance/",
+        "http://$ipAddress:8000/enhance/",
         options: Options(headers: {"Content-Type": "application/json"}),
       );
 

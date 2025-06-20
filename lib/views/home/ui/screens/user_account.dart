@@ -1,10 +1,14 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:gradprj/core/helpers/ipconfig.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gradprj/core/helpers/spacing.dart';
 import 'package:gradprj/core/routing/routes.dart';
 import 'package:gradprj/core/theming/my_colors.dart';
-import 'package:gradprj/views/home/ui/widgets/imageCircleAvatar.dart';
-
-import 'TrelloTokenScreen.dart' show TrelloTokenScreen;
+import '../widgets/CircleAvatar.dart';
+import 'TrelloTokenScreen.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -16,16 +20,64 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   bool showEditFields = false;
   bool isDark = true;
-  final TextEditingController boardController = TextEditingController();
-  final TextEditingController nameController =
-  TextEditingController(text: "Shrouk Ahmed");
-  final TextEditingController emailController =
-  TextEditingController(text: "Shrouk_Ahmed9@gmail.com");
-  final TextEditingController passwordController =
-  TextEditingController(text: "s1234567");
+  final ImagePicker _picker = ImagePicker();
 
-  String displayedName = "Shrouk Ahmed";
-  String displayedEmail = "Shrouk_Ahmed9@gmail.com";
+  final TextEditingController boardController = TextEditingController();
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController(text: "s1234567");
+
+  String displayedName = "Loading...";
+  String displayedEmail = "Loading...";
+  String? profileImageUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    loadUserData();
+  }
+
+  Future<void> pickImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      setState(() {
+        profileImageUrl = pickedFile.path;
+      });
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('profileImagePath', pickedFile.path);
+    }
+  }
+
+  Future<void> loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('userId');
+
+    if (userId == null) return;
+
+    final url = Uri.parse('http://$ipAddress:4000/api/v1/auth/user/$userId');
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final user = data['user'];
+
+        setState(() {
+          displayedName = user['userName'] ?? '';
+          displayedEmail = user['email'] ?? '';
+          profileImageUrl = user['profileImage'];
+          nameController.text = displayedName;
+          emailController.text = displayedEmail;
+        });
+      } else {
+        print("❌ Failed to load user data");
+      }
+    } catch (e) {
+      print("❌ Error: $e");
+    }
+  }
 
   @override
   void dispose() {
@@ -33,7 +85,6 @@ class _ProfilePageState extends State<ProfilePage> {
     emailController.dispose();
     passwordController.dispose();
     boardController.dispose();
-
     super.dispose();
   }
 
@@ -68,14 +119,8 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            icon: Image.asset(
-              "assets/images/arrow.png",
-              width: 24,
-              height: 24,
-            ),
+            onPressed: () => Navigator.pop(context),
+            icon: Image.asset("assets/images/arrow.png", width: 24, height: 24),
           ),
           title: const Text("Profile"),
           centerTitle: true,
@@ -86,30 +131,24 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Column(
               children: [
                 verticalSpace(20),
-                const ImageCircleAvatar(userName: 'shro',),
+                ImageCircleAvatar(
+                  userName: displayedName,
+                  imageUrl: profileImageUrl,
+                  onImageTap: pickImage,
+                ),
                 const SizedBox(height: 10),
                 Text(
                   displayedName,
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 Text(displayedEmail),
                 const SizedBox(height: 20),
-
-                /// Edit Profile section
                 ListTile(
-                  leading:
-                  const Icon(Icons.edit, color: MyColors.button1Color),
+                  leading: const Icon(Icons.edit, color: MyColors.button1Color),
                   title: const Text('Edit Profile'),
-                  trailing: Icon(
-                    showEditFields
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                  ),
+                  trailing: Icon(showEditFields ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down),
                   onTap: () {
-                    setState(() {
-                      showEditFields = !showEditFields;
-                    });
+                    setState(() => showEditFields = !showEditFields);
                   },
                 ),
                 if (showEditFields) ...[
@@ -121,32 +160,31 @@ class _ProfilePageState extends State<ProfilePage> {
                     controller: emailController,
                     decoration: const InputDecoration(labelText: 'Email'),
                   ),
-                  TextField(
-                    controller: passwordController,
-                    decoration: const InputDecoration(labelText: 'Password'),
-                    obscureText: true,
-                  ),
                   const SizedBox(height: 10),
-
-
                   ElevatedButton(
-                    onPressed: () {
+                    onPressed: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('userName', nameController.text);
+                      await prefs.setString('email', emailController.text);
+
                       setState(() {
                         displayedName = nameController.text;
                         displayedEmail = emailController.text;
                       });
+
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Profile updated',style: TextStyle(color: Colors.white),),backgroundColor: MyColors.backgroundColor,)
-                        ,
+                        const SnackBar(
+                          content: Text('Profile updated', style: TextStyle(color: Colors.white)),
+                          backgroundColor: MyColors.backgroundColor,
+                        ),
                       );
                     },
                     child: const Text("Save Changes"),
                   ),
                 ],
                 const Divider(),
-
                 ListTile(
-                  leading: const Icon(Icons.vpn_key, color: MyColors.button1Color ),
+                  leading: const Icon(Icons.vpn_key, color: MyColors.button1Color),
                   title: const Text('Trello Token'),
                   subtitle: const Text('Manage your Trello authentication'),
                   trailing: IconButton(
@@ -166,56 +204,75 @@ class _ProfilePageState extends State<ProfilePage> {
                     },
                   ),
                 ),
-
                 const Divider(),
                 ListTile(
-                  leading: const Icon(Icons.settings,
-                      color: MyColors.button1Color),
+                  leading: const Icon(Icons.settings, color: MyColors.button1Color),
                   title: const Text('Mode'),
                   subtitle: const Text('Dark & Light'),
                   trailing: Switch(
                     value: isDark,
-                    onChanged: (value) {
-                      setState(() {
-                        isDark = value;
-                      });
-                    },
+                    onChanged: (value) => setState(() => isDark = value),
                   ),
                 ),
                 const Divider(),
                 ListTile(
-                  leading: const Icon(
-                    Icons.help,
-                    color: MyColors.button1Color,
-                  ),
+                  leading: const Icon(Icons.help, color: MyColors.button1Color),
                   title: const Text('About'),
                   trailing: IconButton(
                     icon: const Icon(Icons.arrow_forward_ios),
-                    onPressed: () {
-                      Navigator.pushNamed(context, Routes.about);
-                    },
+                    onPressed: () => Navigator.pushNamed(context, Routes.about),
                   ),
-
                 ),
                 const SizedBox(height: 25),
+                // زر تسجيل الخروج
                 TextButton.icon(
-                  onPressed: () {
-                    Navigator.pushNamed(context, Routes.login);
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    final userId = prefs.getString('userId');
+
+                    if (userId != null) {
+                      try {
+                        final url = Uri.parse('http://$ipAddress:4000/logout/');
+                        final response = await http.post(
+                          url,
+                          headers: {'Content-Type': 'application/json'},
+                          body: jsonEncode({'user_id': userId}),
+                        );
+
+                        if (response.statusCode == 200) {
+                          print("✅ User vectorstore deleted from server.");
+                        } else {
+                          print("⚠️ Failed to delete vectorstore: ${response.body}");
+                        }
+                      } catch (e) {
+                        print("⚠️ Error deleting vectorstore: $e");
+                      }
+                    }
+
+                    await prefs.clear();
+
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      Routes.login,
+                          (route) => false,
+                    );
+
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Signed out')),
                     );
                   },
                   icon: Transform.rotate(
-                    angle: 3.1416, // π radians = 180 degrees
+                    angle: 3.1416,
                     child: const Icon(
                       Icons.logout,
                       color: MyColors.button1Color,
                       size: 25,
                     ),
                   ),
-                  label: const Text('Sign Out',
-                      style: TextStyle(
-                          color: MyColors.button1Color, fontSize: 20)),
+                  label: const Text(
+                    'Sign Out',
+                    style: TextStyle(color: MyColors.button1Color, fontSize: 20),
+                  ),
                 ),
                 const SizedBox(height: 10),
               ],

@@ -4,17 +4,19 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:http_parser/http_parser.dart';
+
+import '../../../../core/helpers/ipconfig.dart';
+import '../screens/TextProcessingScreen.dart';
+import '../screens/recording_screen.dart';
 import 'package:gradprj/core/helpers/spacing.dart';
 import 'package:gradprj/core/theming/my_colors.dart';
 import 'package:gradprj/cubit/transcription_cubit.dart';
-import 'package:gradprj/views/home/ui/screens/recording_screen.dart';
-import 'package:gradprj/views/home/ui/screens/note_page.dart';
-import 'package:http_parser/http_parser.dart';
-
-import '../screens/TextProcessingScreen.dart';
 
 class BottomBarHome extends StatefulWidget {
-  const BottomBarHome({super.key});
+  final VoidCallback? onDataChanged;
+
+  const BottomBarHome({Key? key, this.onDataChanged}) : super(key: key);
 
   @override
   State<BottomBarHome> createState() => _BottomBarHomeState();
@@ -42,7 +44,16 @@ class _BottomBarHomeState extends State<BottomBarHome> {
     });
 
     try {
-      String extension = audioFile.path.split('.').last.toLowerCase();
+      String extension = audioFile.path.contains('.')
+          ? audioFile.path.split('.').last.toLowerCase()
+          : '';
+
+      // تحقق من دعم الامتداد
+      final supportedExtensions = ['mp3', 'wav', 'ogg', 'webm', 'opus'];
+      if (!supportedExtensions.contains(extension)) {
+        throw Exception('Unsupported audio format: .$extension');
+      }
+
       String subtype;
       switch (extension) {
         case 'mp3':
@@ -72,14 +83,14 @@ class _BottomBarHomeState extends State<BottomBarHome> {
         ),
       });
 
-      String url = "http://192.168.1.102:8000/transcribe/";
+      String url = "http://$ipAddress:8000/transcribe/";
       Response response = await Dio().post(
         url,
         data: formData,
         options: Options(
           headers: {"Content-Type": "multipart/form-data"},
-          sendTimeout: const Duration(seconds: 20),
-          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 60),   // 60 ثانية لا أكثر
+          receiveTimeout: const Duration(seconds: 60), // 60 ثانية لا أكثر
         ),
       );
 
@@ -89,24 +100,35 @@ class _BottomBarHomeState extends State<BottomBarHome> {
         _transcription = transcription;
       });
 
-      Navigator.push(
+      // افتح صفحة معالجة النص وانتظر العودة
+      await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => TextProcessingScreen( transcription: transcription,),
+          builder: (context) => BlocProvider.value(
+            value: context.read<TranscriptionCubit>(),
+            child: TextProcessingScreen(
+              transcription: transcription,
+              audioFilePath: audioFile.path,
+            ),
+          ),
         ),
       );
+
+      // نخبر الصفحة الأم بالتحديث إذا كان هناك callback
+      if (widget.onDataChanged != null) {
+        widget.onDataChanged!();
+      }
     } catch (e) {
       print("❌ Error uploading file: $e");
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
           title: const Text("Error"),
-          content: Text("can't uplod file$e"),
+          content: Text("Can't upload file: $e"),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text(""
-                  "ok"),
+              child: const Text("OK"),
             )
           ],
         ),
@@ -138,7 +160,9 @@ class _BottomBarHomeState extends State<BottomBarHome> {
                           child: const RecordingScreen(),
                         ),
                       ),
-                    );
+                    ).then((_) {
+                      if (widget.onDataChanged != null) widget.onDataChanged!();
+                    });
                   },
                   icon: const Icon(
                     Icons.mic,
@@ -175,3 +199,4 @@ class _BottomBarHomeState extends State<BottomBarHome> {
     );
   }
 }
+

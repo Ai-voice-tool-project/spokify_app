@@ -3,8 +3,32 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theming/my_colors.dart';
+import '../widgets/add_trallo.dart';
 
-const String trelloApiKey = 'ca5cbd3857fc394901589187e2c3acfd';
+const String trelloApiKey = "e398b664116ed0be68c419dc0d0807df";
+Future<void> checkTokenAndShowDialog(BuildContext context) async {
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('trello_token');
+
+  if (token == null || token.isEmpty) {
+    // ما فيش توكن، نروح نجيب التوكن من صفحة TrelloTokenScreen
+    final newToken = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => TrelloTokenScreen()),
+    );
+
+    if (newToken == null || newToken.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('You must provide Trello token to continue.')),
+      );
+      return;
+    }
+
+    await prefs.setString('trello_token', newToken);
+  }
+
+  showTrelloInputDialog(context);
+}
 
 class TrelloTokenScreen extends StatefulWidget {
   @override
@@ -13,7 +37,7 @@ class TrelloTokenScreen extends StatefulWidget {
 
 class _TrelloTokenScreenState extends State<TrelloTokenScreen> {
   final TextEditingController _tokenController = TextEditingController();
-  bool _obscureToken = true; // 👁️ متغير إخفاء/إظهار التوكن
+  bool _obscureToken = true;
 
   @override
   void initState() {
@@ -30,7 +54,7 @@ class _TrelloTokenScreenState extends State<TrelloTokenScreen> {
   }
 
   Future<void> _saveToken() async {
-    final token = _tokenController.text.replaceAll('\n', '').replaceAll(' ', '');
+    final token = _tokenController.text.trim();
 
     if (token.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -46,7 +70,7 @@ class _TrelloTokenScreenState extends State<TrelloTokenScreen> {
       const SnackBar(content: Text('Trello Token saved successfully')),
     );
 
-    Navigator.pop(context, true);
+    Navigator.pop(context, token); // ✅ رجّع التوكن
   }
 
   Future<void> _launchTokenUrl() async {
@@ -82,12 +106,12 @@ class _TrelloTokenScreenState extends State<TrelloTokenScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const SizedBox(height: 80),
             GestureDetector(
               onTap: _launchTokenUrl,
-              child: Container(
+
+        child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   color: MyColors.button1Color,

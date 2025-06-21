@@ -31,7 +31,12 @@ Future<void> checkTokenAndShowDialog(BuildContext context) async {
 }
 
 class TrelloTokenScreen extends StatefulWidget {
+  final String? sourcePage;
+
+  const TrelloTokenScreen({super.key, this.sourcePage}); // ← أضف هذا
+
   @override
+
   State<TrelloTokenScreen> createState() => _TrelloTokenScreenState();
 }
 

@@ -20,8 +20,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<List<dynamic>>? _futureTranscriptions;
   String? userId;
-
-  // قائمة تخزين الترنسكريبشن محلياً للتحكم بالحذف من الواجهة
   List<dynamic> _transcriptions = [];
 
   @override
@@ -47,10 +45,18 @@ class _HomeScreenState extends State<HomeScreen> {
         throw Exception('Failed to load transcriptions: success false');
       }
     } else if (response.statusCode == 404) {
-      // 404 معناه لا توجد بيانات، فترجع ليست فارغة بدل رمي استثناء
       return [];
     } else {
-      throw Exception('Failed to load transcriptions: status code ${response.statusCode}');
+      throw Exception('Failed to load transcriptions: status code \${response.statusCode}');
+    }
+  }
+
+  Future<void> deleteTranscription(String id) async {
+    final url = Uri.parse('http://$ipAddress:4000/api/transcriptions/$id');
+    final response = await http.delete(url);
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to delete transcription');
     }
   }
 
@@ -75,7 +81,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: MyColors.backgroundColor,
       appBar: AppBarHome(),
-      body: _futureTranscriptions == null
+
+      body:
+      _futureTranscriptions == null
           ? const Center(child: CircularProgressIndicator())
           : FutureBuilder<List<dynamic>>(
         future: _futureTranscriptions,
@@ -84,17 +92,19 @@ class _HomeScreenState extends State<HomeScreen> {
             return const Center(child: CircularProgressIndicator());
           } else if (snapshot.hasError) {
             return Center(
-                child: Text('Error: ${snapshot.error}',
-                    style: const TextStyle(color: Colors.red)));
+              child: Text(
+                'Error: \${snapshot.error}',
+                style: const TextStyle(color: Colors.red),
+              ),
+            );
           } else if (_transcriptions.isEmpty) {
-            // حالة عدم وجود بيانات - عرض رسالة وأيقونة وزر تحديث
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.note_alt_outlined,
                       size: 80, color: MyColors.button1Color),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 25),
                   const Text(
                     'No transcriptions found.',
                     style: TextStyle(
@@ -121,8 +131,8 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           } else {
             return ListView.builder(
-              padding:
-              const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              padding: const EdgeInsets.symmetric(
+                  vertical: 12, horizontal: 16),
               itemCount: _transcriptions.length,
               itemBuilder: (context, index) {
                 final item = _transcriptions[index];
@@ -133,21 +143,33 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
                 String transcriptionPreview = (item['transcription'] ?? "");
                 if (transcriptionPreview.length > 50) {
-                  transcriptionPreview =
-                      transcriptionPreview.substring(0, 50) + "...";
+                  transcriptionPreview = transcriptionPreview.substring(0, 50) + "...";
                 }
 
                 return Dismissible(
-                  key: Key(item['_id']?.toString() ?? UniqueKey().toString()),
+                  key: Key(item['id']?.toString() ?? UniqueKey().toString()),
                   direction: DismissDirection.endToStart,
-                  onDismissed: (direction) {
+                  onDismissed: (direction) async {
+                    final removedItem = _transcriptions[index];
                     setState(() {
                       _transcriptions.removeAt(index);
                     });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text("Item removed from view")),
-                    );
+
+                    try {
+                      await deleteTranscription(removedItem['id']);
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Transcription deleted")),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      setState(() {
+                        _transcriptions.insert(index, removedItem);
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Failed to delete transcription")),
+                      );
+                    }
                   },
                   background: Container(
                     color: MyColors.button2Color,
@@ -174,26 +196,33 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Colors.white,
                         ),
                       ),
-                      subtitle: Text(
-                        parsedDate != null
-                            ? " ${DateFormat.yMMMd().add_jm().format(parsedDate)}"
-                            : "Uploaded on: Unknown",
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white70,
+                      subtitle: Center(
+                        child: Text(
+                          parsedDate != null
+                              ? DateFormat.yMMMd().add_jm().format(parsedDate)
+                              : "Uploaded on: Unknown",
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white70,
+                          ),
                         ),
                       ),
+
                       onTap: () async {
-                        await Navigator.push(
+                        final wasDeleted = await Navigator.push<bool>(
                           context,
                           MaterialPageRoute(
                             builder: (context) => note_screen(
                               uploadDate: parsedDate,
                               fullTranscription: item['transcription'] ?? '',
+                              transcriptionId: item['id'],
                             ),
                           ),
                         );
-                        loadUserIdAndFetch();
+
+                        if (wasDeleted == true) {
+                          loadUserIdAndFetch();
+                        }
                       },
                     ),
                   ),

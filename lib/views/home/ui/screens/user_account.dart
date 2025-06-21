@@ -192,7 +192,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     onPressed: () async {
                       final updatedToken = await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => TrelloTokenScreen()),
+                        MaterialPageRoute(builder: (_) =>  TrelloTokenScreen(sourcePage: 'profile')),
                       );
 
                       if (updatedToken != null && updatedToken is String) {
@@ -224,7 +224,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 25),
-                // زر تسجيل الخروج
                 TextButton.icon(
                   onPressed: () async {
                     final prefs = await SharedPreferences.getInstance();

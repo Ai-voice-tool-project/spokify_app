@@ -14,8 +14,10 @@ import 'package:gradprj/views/home/ui/widgets/topics_list.dart';
 import 'package:gradprj/views/home/ui/widgets/tasks_list.dart';
 import 'package:gradprj/views/home/ui/widgets/action_buttons_row.dart';
 
+import '../../../../core/helpers/MediaType.dart';
 import '../../../../core/helpers/ipconfig.dart';
 import '../widgets/add_trallo.dart';
+import 'TrelloTokenScreen.dart';
 
 // مفتاح Trello
 const String trelloApiKey = "e398b664116ed0be68c419dc0d0807df";
@@ -85,7 +87,7 @@ class _TextProcessingScreenState extends State<TextProcessingScreen> {
         "audio": await MultipartFile.fromFile(
           widget.audioFilePath,
           filename: widget.audioFilePath.split(Platform.pathSeparator).last,
-          contentType: MediaType('audio', 'mpeg'),
+          contentType: getAudioMediaType(widget.audioFilePath),
         ),
       });
 
@@ -237,14 +239,37 @@ class _TextProcessingScreenState extends State<TextProcessingScreen> {
     }
   }
 
-  Future<void> checkTokenAndShowTrelloDialog(BuildContext context) async {
+  // Future<void> checkTokenAndShowTrelloDialog(BuildContext context) async {
+  //   final prefs = await SharedPreferences.getInstance();
+  //   final token = prefs.getString('trello_token');
+  //
+  //   if (token == null || token.isEmpty) {
+  //     final newToken = await Navigator.push<String>(
+  //       context,
+  //       MaterialPageRoute(builder: (_) => TrelloTokenScreen()),
+  //     );
+  //
+  //     if (newToken == null || newToken.isEmpty) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(content: Text('You must provide Trello token to continue.')),
+  //       );
+  //       return;
+  //     }
+  //
+  //     await prefs.setString('trello_token', newToken);
+  //   }
+  //
+  //   showTrelloInputDialog(context);
+  // }
+  Future<void> checkTokenAndShowTrelloDialog(BuildContext context, {required String sourcePage}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('trello_token');
 
     if (token == null || token.isEmpty) {
+      // مرر sourcePage عند استدعاء TrelloTokenScreen
       final newToken = await Navigator.push<String>(
         context,
-        MaterialPageRoute(builder: (_) => TrelloTokenScreen()),
+        MaterialPageRoute(builder: (_) => TrelloTokenScreen(sourcePage: sourcePage)),
       );
 
       if (newToken == null || newToken.isEmpty) {
@@ -314,7 +339,7 @@ class _TextProcessingScreenState extends State<TextProcessingScreen> {
                       await fetchTopics();
                       setState(() => showTopics = !showTopics);
                     },
-                    onTrelloPressed: () => checkTokenAndShowTrelloDialog(context),
+                    onTrelloPressed: () => checkTokenAndShowTrelloDialog(context, sourcePage: "textProcessing"),
                   ),
 
                   const SizedBox(height: 30),
@@ -358,45 +383,45 @@ class _TextProcessingScreenState extends State<TextProcessingScreen> {
     );
   }
 }
-
-/// صفحة WebView لجلب توكن Trello
-class TrelloTokenScreen extends StatefulWidget {
-  @override
-  _TrelloTokenScreenState createState() => _TrelloTokenScreenState();
-}
-
-class _TrelloTokenScreenState extends State<TrelloTokenScreen> {
-  late WebViewController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (url) {
-            if (url.contains('token=')) {
-              final uri = Uri.parse(url);
-              final token = uri.fragment.split('token=').last;
-              Navigator.pop(context, token);
-            }
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse(
-          'https://trello.com/1/authorize?expiration=never&name=SpokifyApp&scope=read,write&response_type=token&key=$trelloApiKey'));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Authorize Trello'),
-        backgroundColor: Colors.black87,
-      ),
-      body: WebViewWidget(controller: _controller),
-    );
-  }
-}
+//
+// /// صفحة WebView لجلب توكن Trello
+// class TrelloTokenScreen extends StatefulWidget {
+//   @override
+//   _TrelloTokenScreenState createState() => _TrelloTokenScreenState();
+// }
+//
+// class _TrelloTokenScreenState extends State<TrelloTokenScreen> {
+//   late WebViewController _controller;
+//
+//   @override
+//   void initState() {
+//     super.initState();
+//
+//     _controller = WebViewController()
+//       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+//       ..setNavigationDelegate(
+//         NavigationDelegate(
+//           onPageStarted: (url) {
+//             if (url.contains('token=')) {
+//               final uri = Uri.parse(url);
+//               final token = uri.fragment.split('token=').last;
+//               Navigator.pop(context, token);
+//             }
+//           },
+//         ),
+//       )
+//       ..loadRequest(Uri.parse(
+//           'https://trello.com/1/authorize?expiration=never&name=SpokifyApp&scope=read,write&response_type=token&key=$trelloApiKey'));
+//   }
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       appBar: AppBar(
+//         title: const Text('Authorize Trello'),
+//         backgroundColor: Colors.black87,
+//       ),
+//       body: WebViewWidget(controller: _controller),
+//     );
+//   }
+// }

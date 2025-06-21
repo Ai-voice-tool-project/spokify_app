@@ -16,12 +16,14 @@ import 'package:gradprj/views/home/ui/widgets/custom_gustor_detector.dart';
 import 'package:gradprj/views/home/ui/widgets/scrollable_bottom_sheet.dart';
 
 import '../../../../core/helpers/showBlockingLoade.dart';
+import '../../../../core/routing/routes.dart';
 
 class note_screen extends StatefulWidget {
   final DateTime? uploadDate;
   final String fullTranscription;
+  final String? transcriptionId;
 
-  note_screen({Key? key, this.uploadDate, required this.fullTranscription}) : super(key: key);
+  note_screen({Key? key, this.uploadDate, required this.fullTranscription, this.transcriptionId}) : super(key: key);
 
   @override
   _note_screenState createState() => _note_screenState();
@@ -86,6 +88,28 @@ class _note_screenState extends State<note_screen> {
       setState(() {
         isLoadingTasks = false;
       });
+    }
+  }
+  Future<void> deleteNote() async {
+    if (widget.transcriptionId == null) return;
+
+    final url = Uri.parse('http://$ipAddress:4000/api/transcriptions/${widget.transcriptionId}');
+    try {
+      final response = await http.delete(url);
+      if (response.statusCode == 200) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Note deleted successfully")),
+        );
+        Navigator.pushNamedAndRemoveUntil(context, Routes.home, (route) => false);
+      } else {
+        throw Exception('Failed to delete note');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error deleting note: $e")),
+      );
     }
   }
 
@@ -403,17 +427,9 @@ class _note_screenState extends State<note_screen> {
           ),
           CustomDraggableScrollableSheet(
             transcriptionText: widget.fullTranscription,
-            onSummarize: fetchSummary,
-            onDetectTopics: fetchTopics,
-            summaryText: summaryText,
-            tasks: extractedTasks, // ← Add this
-            topics: detectedTopics,
-
-// ← Add this too
-          )
-
-
-
+            onDelete: deleteNote,
+            TranscriptionId:widget.transcriptionId!,
+          ),
         ],
       ),
     );

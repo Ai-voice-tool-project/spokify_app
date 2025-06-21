@@ -1,10 +1,13 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:gradprj/core/helpers/ipconfig.dart';
 import 'package:gradprj/core/helpers/spacing.dart';
 import 'package:gradprj/core/theming/my_colors.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
@@ -14,22 +17,18 @@ import '../screens/emailService.dart';
 
 class CustomDraggableScrollableSheet extends StatefulWidget {
   final String transcriptionText;
-  final VoidCallback onSummarize;
-  final VoidCallback onDetectTopics;
-  final VoidCallback? onDelete;  // إضافة دالة الحذف
+  final VoidCallback? onDelete;
   final String? summaryText;
   final List<String>? tasks;
   final List<String>? topics;
-
+  final String TranscriptionId;
   const CustomDraggableScrollableSheet({
     Key? key,
     required this.transcriptionText,
-    required this.onSummarize,
-    required this.onDetectTopics,
     this.onDelete,
     this.summaryText,
     this.tasks,
-    this.topics,
+    this.topics, required this.TranscriptionId,
   }) : super(key: key);
 
   @override
@@ -41,7 +40,9 @@ class _CustomDraggableScrollableSheetState
     extends State<CustomDraggableScrollableSheet> {
   bool _isEmailFormVisible = false;
   final ScreenshotController screenshotController = ScreenshotController();
-
+  String? _summaryText;
+  bool _isLoadingSummary = false;
+  String? _summaryError;
   final TextEditingController _fromEmailController = TextEditingController();
   final TextEditingController _toEmailController = TextEditingController();
 
@@ -323,36 +324,6 @@ class _CustomDraggableScrollableSheetState
                           );
                         },
                       ),
-                      // IconButton(
-                      //   icon: const Icon(Icons.delete, color: Colors.white),
-                      //   onPressed: widget.onDelete != null
-                      //       ? () {
-                      //     showDialog(
-                      //       context: context,
-                      //       builder: (context) => AlertDialog(
-                      //         backgroundColor: MyColors.backgroundColor,
-                      //         title: const Text("Confirm Delete", style: TextStyle(color: Colors.white)),
-                      //         content: const Text(
-                      //             "Are you sure you want to delete this transcription?",
-                      //             style: TextStyle(color: Colors.white70)),
-                      //         actions: [
-                      //           TextButton(
-                      //             child: const Text("Cancel", style: TextStyle(color: Colors.white)),
-                      //             onPressed: () => Navigator.of(context).pop(),
-                      //           ),
-                      //           TextButton(
-                      //             child: const Text("Delete", style: TextStyle(color: Colors.redAccent)),
-                      //             onPressed: () {
-                      //               Navigator.of(context).pop();
-                      //               widget.onDelete!();
-                      //             },
-                      //           ),
-                      //         ],
-                      //       ),
-                      //     );
-                      //   }
-                      //       : null,
-                      // ),
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.white),
                         onPressed: widget.onDelete != null
@@ -363,41 +334,37 @@ class _CustomDraggableScrollableSheetState
                               backgroundColor: MyColors.backgroundColor,
                               title: const Text("Confirm Delete", style: TextStyle(color: Colors.white)),
                               content: const Text(
-                                  "Are you sure you want to delete this transcription?",
-                                  style: TextStyle(color: Colors.white70)),
+                                "Are you sure you want to delete this transcription?",
+                                style: TextStyle(color: Colors.white70),
+                              ),
                               actions: [
                                 TextButton(
-                                  child: const Text("Cancel", style: TextStyle(color: Colors.white)),
                                   onPressed: () => Navigator.of(context).pop(),
+                                  child: const Text("Cancel", style: TextStyle(color: Colors.white)),
                                 ),
                                 TextButton(
-                                  child: const Text("Delete", style: TextStyle(color: Colors.redAccent)),
                                   onPressed: () {
-                                    Navigator.of(context).pop(); // تغلق الـ AlertDialog
-                                    widget.onDelete!();         // تنفذ الحذف
-                                    Navigator.of(context).pop(); // ترجع الصفحة السابقة
+                                    Navigator.of(context).pop(); // close dialog
+                                    widget.onDelete!();          // just call the delete function
                                   },
+                                  child: const Text("Delete", style: TextStyle(color: Colors.redAccent)),
                                 ),
                               ],
                             ),
                           );
                         }
                             : null,
-                      ),
+
+                      )
 
                     ],
                   ),
                   const SizedBox(height: 20),
                   const Divider(color: Colors.white24),
                   verticalSpace(20),
-                  const Center(
-                    child: Text(
-                      "+ add tags",
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                  ),
                   verticalSpace(20),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
                       OutlinedButton(
                         onPressed: () {
@@ -448,132 +415,312 @@ class _CustomDraggableScrollableSheetState
                           foregroundColor: Colors.white,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 50),
                       OutlinedButton(
-                        onPressed: () {
-                          if (widget.tasks != null && widget.tasks!.isNotEmpty) {
-                            showDialog(
-                              context: context,
-                              builder: (_) => AlertDialog(
-                                backgroundColor: MyColors.backgroundColor,
-                                title: const Text("Tasks List",
-                                    style: TextStyle(color: Colors.white)),
-                                content: SingleChildScrollView(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: widget.tasks!
-                                        .map(
-                                          (task) => Padding(
-                                        padding: const EdgeInsets.symmetric(vertical: 4),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            const Text("• ",
-                                                style: TextStyle(
-                                                    color: Colors.white, fontSize: 18)),
-                                            Expanded(
-                                              child: Text(
-                                                task,
-                                                style: const TextStyle(
-                                                    color: Colors.white, fontSize: 14),
-                                              ),
+                        onPressed: () async {
+                          showDialog(
+                            context: context,
+                            builder: (_) => const Center(
+                              child: CircularProgressIndicator(color: Colors.white),
+                            ),
+                            barrierDismissible: false,
+                          );
+
+                          final url = Uri.parse('http://$ipAddress:4000/api/getTrancriptionById/${widget.TranscriptionId}');
+                          try {
+                            final response = await http.get(url);
+                            Navigator.pop(context); // Close loading spinner
+
+                            if (response.statusCode == 200) {
+                              final fullData = json.decode(response.body);
+                              final data = fullData['data'];
+                              print("FULL DATA: $data");
+
+                              final dynamic tasksField = data['tasks'] ?? data['metadata']?['tasks'];
+                              print("TASKS FIELD: $tasksField");
+
+                              List<String> tasksList = [];
+
+                              if (tasksField != null) {
+                                if (tasksField is List) {
+                                  tasksList = tasksField
+                                      .map((e) => e.toString().trim())
+                                      .where((e) => e.isNotEmpty)
+                                      .toList();
+                                } else if (tasksField is String) {
+                                  tasksList = tasksField
+                                      .split('\n')
+                                      .map((e) => e.trim())
+                                      .where((e) => e.isNotEmpty)
+                                      .toList();
+                                }
+                              }
+
+                              if (tasksList.isNotEmpty) {
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => AlertDialog(
+                                    backgroundColor: MyColors.backgroundColor,
+                                    title: const Text("Tasks List", style: TextStyle(color: Colors.white)),
+                                    content: SingleChildScrollView(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: tasksList.map(
+                                              (task) => Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 4),
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                const Text("• ", style: TextStyle(color: Colors.white, fontSize: 18)),
+                                                Expanded(
+                                                  child: Text(task, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                                                ),
+                                              ],
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                        ).toList(),
                                       ),
-                                    )
-                                        .toList(),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () async {
+                                          final allTasksText = tasksList.join('\n');
+                                          await Clipboard.setData(ClipboardData(text: allTasksText));
+                                          Navigator.pop(context);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text("Tasks copied to clipboard")),
+                                          );
+                                        },
+                                        child: const Text("Copy", style: TextStyle(color: Colors.white)),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text("Close", style: TextStyle(color: Colors.white)),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () async {
-                                      final allTasksText = widget.tasks!.join('\n');
-                                      await Clipboard.setData(
-                                          ClipboardData(text: allTasksText));
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text("Tasks copied to clipboard")),
-                                      );
-                                    },
-                                    child: const Text("Copy",
-                                        style: TextStyle(color: Colors.white)),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text("Close",
-                                        style: TextStyle(color: Colors.white)),
-                                  ),
-                                ],
-                              ),
-                            );
-                          } else {
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("No tasks available.")),
+                                );
+                              }
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Error fetching tasks: ${response.statusCode}")),
+                              );
+                            }
+                          } catch (e) {
+                            Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("No tasks available.")),
+                              SnackBar(content: Text("Error: $e")),
                             );
                           }
                         },
-                        child:
-                        const Text("View Tasks", style: TextStyle(fontSize: 12)),
+                        child: const Text("View Tasks", style: TextStyle(fontSize: 12)),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                         ),
                       ),
+
                     ],
                   ),
                   verticalSpace(20),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
                       OutlinedButton(
-                        onPressed: () {
-                          if (widget.summaryText != null &&
-                              widget.summaryText!.isNotEmpty) {
-                            showDialog(
-                              context: context,
-                              builder: (_) => AlertDialog(
-                                backgroundColor: MyColors.backgroundColor,
-                                title: const Text("Summary",
-                                    style: TextStyle(color: Colors.white)),
-                                content: SingleChildScrollView(
-                                  child: SelectableText(
-                                    widget.summaryText!,
-                                    style: const TextStyle(color: Colors.white),
+                        onPressed: () async {
+                          showDialog(
+                            context: context,
+                            builder: (_) => const Center(
+                              child: CircularProgressIndicator(color: Colors.white),
+                            ),
+                            barrierDismissible: false,
+                          );
+
+                          final url = Uri.parse('http://$ipAddress:4000/api/getTrancriptionById/${widget.TranscriptionId}');
+                          try {
+                            final response = await http.get(url);
+
+                            Navigator.pop(context); // إغلاق شاشة الانتظار
+
+                            if (response.statusCode == 200) {
+                              // هنا تفك JSON وترى شكل البيانات
+                              final data = json.decode(response.body);
+
+                              final dataField = data['data'];
+                              print('Data field: $dataField');
+
+                              final metadata = dataField != null ? dataField['metadata'] : null;
+                              print('Metadata: $metadata');
+
+                              final summary = metadata != null ? metadata['summary'] : null;
+                              print('Summary raw: $summary');
+
+                              final cleanedSummary = summary?.toString().trim() ?? "";
+
+                              if (cleanedSummary.isNotEmpty) {
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => AlertDialog(
+                                    backgroundColor: MyColors.backgroundColor,
+                                    title: const Text("Summary", style: TextStyle(color: Colors.white)),
+                                    content: SingleChildScrollView(
+                                      child: SelectableText(
+                                        cleanedSummary,
+                                        style: const TextStyle(color: Colors.white),
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () async {
+                                          await Clipboard.setData(ClipboardData(text: cleanedSummary));
+                                          Navigator.pop(context);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text("Summary copied to clipboard")),
+                                          );
+                                        },
+                                        child: const Text("Copy", style: TextStyle(color: Colors.white)),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text("Close", style: TextStyle(color: Colors.white)),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () async {
-                                      await Clipboard.setData(
-                                          ClipboardData(text: widget.summaryText ?? ""));
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text("Summary copied to clipboard")),
-                                      );
-                                    },
-                                    child: const Text("Copy",
-                                        style: TextStyle(color: Colors.white)),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text("Close",
-                                        style: TextStyle(color: Colors.white)),
-                                  ),
-                                ],
-                              ),
-                            );
-                          } else {
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("No summary available.")),
+                                );
+                              }
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Error fetching summary: ${response.statusCode}")),
+                              );
+                            }
+                          } catch (e) {
+                            Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("No summary available.")),
+                              SnackBar(content: Text("Error: $e")),
                             );
                           }
                         },
-                        child:
-                        const Text("Show Summary", style: TextStyle(fontSize: 12)),
+                        child: const Text("Show Summary", style: TextStyle(fontSize: 12)),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                         ),
                       ),
+                      const SizedBox(width: 50),
+                      OutlinedButton(
+                        onPressed: () async {
+                          showDialog(
+                            context: context,
+                            builder: (_) => const Center(
+                              child: CircularProgressIndicator(color: Colors.white),
+                            ),
+                            barrierDismissible: false,
+                          );
+
+                          final url = Uri.parse('http://$ipAddress:4000/api/getTrancriptionById/${widget.TranscriptionId}');
+                          try {
+                            final response = await http.get(url);
+                            Navigator.pop(context); // Close loading spinner
+
+                            if (response.statusCode == 200) {
+                              final fullData = json.decode(response.body);
+                              final data = fullData['data'];
+                              print("FULL DATA: $data");
+
+                              final dynamic topicsField = data['topics'] ?? data['metadata']?['topics'];
+                              print("TOPICS FIELD: $topicsField");
+
+                              List<String> topicsList = [];
+
+                              if (topicsField != null) {
+                                if (topicsField is List) {
+                                  topicsList = topicsField
+                                      .map((e) => e.toString().trim())
+                                      .where((e) => e.isNotEmpty)
+                                      .toList();
+                                } else if (topicsField is String) {
+                                  topicsList = topicsField
+                                      .split('\n')
+                                      .map((e) => e.replaceFirst("*", "").trim())
+                                      .where((e) => e.isNotEmpty)
+                                      .toList();
+                                }
+                              }
+
+                              if (topicsList.isNotEmpty) {
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => AlertDialog(
+                                    backgroundColor: MyColors.backgroundColor,
+                                    title: const Text("Topics List", style: TextStyle(color: Colors.white)),
+                                    content: SingleChildScrollView(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: topicsList.map(
+                                              (topic) => Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 4),
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                const Text("• ", style: TextStyle(color: Colors.white, fontSize: 18)),
+                                                Expanded(
+                                                  child: Text(topic, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ).toList(),
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () async {
+                                          final allTopicsText = topicsList.join('\n');
+                                          await Clipboard.setData(ClipboardData(text: allTopicsText));
+                                          Navigator.pop(context);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text("Topics copied to clipboard")),
+                                          );
+                                        },
+                                        child: const Text("Copy", style: TextStyle(color: Colors.white)),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text("Close", style: TextStyle(color: Colors.white)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("No topics available.")),
+                                );
+                              }
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Error fetching topics: ${response.statusCode}")),
+                              );
+                            }
+                          } catch (e) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text("Error: $e")),
+                            );
+                          }
+                        },
+                        child: const Text("View Topics", style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+
+
                     ],
                   ),
                   const SizedBox(height: 40),

@@ -89,8 +89,38 @@ class _AskQuestionPageState extends State<AskQuestionPage> {
 
     try {
       final results = await askEachQuestion(question, transcriptions);
+
+      // فلترة النتائج لتجاهل الإجابات التي تدل على عدم وجود محتوى مناسب
+      final filteredResults = results.where((item) {
+        final answer = (item["answer"] ?? "").toString().toLowerCase().trim();
+        if (answer.isEmpty) return false;
+
+        final excludePhrases = [
+          "does not contain",
+          "no relevant",
+          "no answer",
+          "not found",
+          "no information",
+          "no relevant paragraphs",
+          "not contain relevant",
+          "no results",
+          "no relevant content",
+          "not available",
+          "cannot find",
+          "not mentioned"
+        ];
+
+        for (final phrase in excludePhrases) {
+          if (answer.contains(phrase)) {
+            return false;
+          }
+        }
+
+        return true;
+      }).toList();
+
       setState(() {
-        _results = results;
+        _results = filteredResults;
       });
     } catch (e) {
       setState(() {
@@ -173,19 +203,27 @@ class _AskQuestionPageState extends State<AskQuestionPage> {
 
             if (_error != null) ...[
               Text(_error!, style: TextStyle(color: MyColors.button1Color)),
-            ] else if (_results != null) ...[
+            ] else if (_results != null && _results!.isNotEmpty) ...[
               ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _results!.length,
                 itemBuilder: (context, index) {
                   final item = _results![index];
-                  final relatedParagraphs = (item["related_paragraphs"] ?? "").split('\n\n');
+                  final answer = item["answer"] ?? "";
+                  final rawParagraphs = item["related_paragraphs"];
+                  final List<String> relatedParagraphs = [];
+
+                  if (rawParagraphs != null && rawParagraphs is String && rawParagraphs.isNotEmpty) {
+                    relatedParagraphs.addAll(
+                        rawParagraphs.split('\n\n').where((p) => p.trim().isNotEmpty).toList()
+                    );
+                  }
 
                   return Card(
                     margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 6,  // ظل أكبر للكارد
+                    elevation: 6,
                     shadowColor: Colors.black.withOpacity(0.5),
                     color: MyColors.backgroundColor,
                     child: Padding(
@@ -193,7 +231,6 @@ class _AskQuestionPageState extends State<AskQuestionPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // صندوق الإجابة مع ظل
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
@@ -209,11 +246,10 @@ class _AskQuestionPageState extends State<AskQuestionPage> {
                               ],
                             ),
                             child: Text(
-                              item["answer"] ?? "No answer.",
+                              answer,
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
                             ),
                           ),
-
                           const SizedBox(height: 16),
 
                           Text(
@@ -221,10 +257,8 @@ class _AskQuestionPageState extends State<AskQuestionPage> {
                             style: TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 14, color: MyColors.button1Color),
                           ),
-
                           const SizedBox(height: 8),
 
-                          // عرض كل فقرة متعلقة في كارد مستقل
                           ...relatedParagraphs.map((paragraph) => Card(
                             margin: const EdgeInsets.symmetric(vertical: 6),
                             color: MyColors.backgroundColor,
@@ -242,6 +276,13 @@ class _AskQuestionPageState extends State<AskQuestionPage> {
                     ),
                   );
                 },
+              ),
+            ] else if (_results != null && _results!.isEmpty) ...[
+              Center(
+                child: Text(
+                  "No relevant answers found.",
+                  style: TextStyle(color: MyColors.button1Color, fontSize: 16),
+                ),
               )
             ],
           ],

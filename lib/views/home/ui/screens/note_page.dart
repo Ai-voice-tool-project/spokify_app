@@ -337,29 +337,36 @@ class _note_screenState extends State<note_screen> {
       builder: (_) => AlertDialog(
         backgroundColor: MyColors.backgroundColor,
         title: const Text("Edit Note", style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              maxLines: 2,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'Enter title',
-                hintStyle: TextStyle(color: Colors.white54),
-              ),
+        content: SingleChildScrollView(  // إضافة لف حل المشكلة
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom, // يسمح بالتمدد مع الكيبورد
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: contentController,
-              maxLines: 5,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'Enter content',
-                hintStyle: TextStyle(color: Colors.white54),
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  maxLines: 2,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    hintText: 'Enter title',
+                    hintStyle: TextStyle(color: Colors.white54),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: contentController,
+                  maxLines: 5,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    hintText: 'Enter content',
+                    hintStyle: TextStyle(color: Colors.white54),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
         actions: [
           TextButton(
@@ -380,6 +387,7 @@ class _note_screenState extends State<note_screen> {
     );
   }
 
+  @override
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -406,7 +414,7 @@ class _note_screenState extends State<note_screen> {
                   ),
                   const SizedBox(height: 20),
                   CustomGestureDetector(
-                    title: title,
+                    title: title,  // عرض العنوان المعدل
                     onTap: () => _editText('title'),
                   ),
                   Container(
@@ -417,7 +425,12 @@ class _note_screenState extends State<note_screen> {
                   ),
                   verticalSpace(10),
                   Text(
-                    widget.fullTranscription.isNotEmpty ? widget.fullTranscription : "No transcription available",
+                    // عرض النص المحسن لو موجود، وإلا عرض النص الأصلي
+                    enhancedText != null && enhancedText!.isNotEmpty
+                        ? enhancedText!
+                        : widget.fullTranscription.isNotEmpty
+                        ? widget.fullTranscription
+                        : "No transcription available",
                     style: const TextStyle(fontSize: 16, color: Colors.white),
                   ),
                   SizedBox(height: MediaQuery.of(context).size.height * 0.111),
@@ -426,9 +439,12 @@ class _note_screenState extends State<note_screen> {
             ),
           ),
           CustomDraggableScrollableSheet(
-            transcriptionText: widget.fullTranscription,
+            // هنا أرسلي النص المحسن لو موجود بدلاً من النص الأصلي
+            transcriptionText: enhancedText != null && enhancedText!.isNotEmpty
+                ? enhancedText!
+                : widget.fullTranscription,
             onDelete: deleteNote,
-            TranscriptionId:widget.transcriptionId!,
+            TranscriptionId: widget.transcriptionId!,
           ),
         ],
       ),

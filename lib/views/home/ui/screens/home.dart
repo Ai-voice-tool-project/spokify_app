@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:gradprj/core/helpers/ipconfig.dart';
@@ -47,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (response.statusCode == 404) {
       return [];
     } else {
-      throw Exception('Failed to load transcriptions: status code \${response.statusCode}');
+      throw Exception('Failed to load transcriptions: status code ${response.statusCode}');
     }
   }
 
@@ -81,9 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: MyColors.backgroundColor,
       appBar: AppBarHome(),
-
-      body:
-      _futureTranscriptions == null
+      body: _futureTranscriptions == null
           ? const Center(child: CircularProgressIndicator())
           : FutureBuilder<List<dynamic>>(
         future: _futureTranscriptions,
@@ -93,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
           } else if (snapshot.hasError) {
             return Center(
               child: Text(
-                'Error: \${snapshot.error}',
+                'Error: ${snapshot.error}',
                 style: const TextStyle(color: Colors.red),
               ),
             );
@@ -131,8 +130,8 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           } else {
             return ListView.builder(
-              padding: const EdgeInsets.symmetric(
-                  vertical: 12, horizontal: 16),
+              padding:
+              const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               itemCount: _transcriptions.length,
               itemBuilder: (context, index) {
                 final item = _transcriptions[index];
@@ -143,33 +142,57 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
                 String transcriptionPreview = (item['transcription'] ?? "");
                 if (transcriptionPreview.length > 50) {
-                  transcriptionPreview = transcriptionPreview.substring(0, 50) + "...";
+                  transcriptionPreview =
+                      transcriptionPreview.substring(0, 50) + "...";
                 }
 
                 return Dismissible(
-                  key: Key(item['id']?.toString() ?? UniqueKey().toString()),
+                  key: ValueKey(item['id']),
                   direction: DismissDirection.endToStart,
-                  onDismissed: (direction) async {
-                    final removedItem = _transcriptions[index];
-                    setState(() {
-                      _transcriptions.removeAt(index);
-                    });
+                  confirmDismiss: (direction) async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text("Delete Confirmation"),
+                        content: const Text(
+                            "Are you sure you want to delete this transcription?"),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text("Cancel"),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text(
+                              "Delete",
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
 
-                    try {
-                      await deleteTranscription(removedItem['id']);
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Transcription deleted")),
-                      );
-                    } catch (e) {
-                      if (!mounted) return;
-                      setState(() {
-                        _transcriptions.insert(index, removedItem);
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Failed to delete transcription")),
-                      );
+                    if (confirm == true) {
+                      try {
+                        await deleteTranscription(item['id']);
+                        setState(() {
+                          _transcriptions.removeAt(index);
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text("Transcription deleted")),
+                        );
+                        return true;
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content:
+                              Text("Failed to delete transcription")),
+                        );
+                        return false;
+                      }
                     }
+                    return false;
                   },
                   background: Container(
                     color: MyColors.button2Color,
@@ -207,7 +230,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
-
                       onTap: () async {
                         final wasDeleted = await Navigator.push<bool>(
                           context,
